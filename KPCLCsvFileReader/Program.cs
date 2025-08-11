@@ -172,8 +172,8 @@ static async Task PostToAPI(List<ReservoirDataDB> data)
     int logId = 35; // Change if needed
     string remark = result;
 
-    // Save the audit log (adjust method signature as your project)
-    int rowno = AuditLog.SaveAuditLog(logId, lastUpdatedLog, noOfRecords, remark, (int)response.StatusCode, json, null, null, milliseconds);
+    // Save the audit log 
+    int rowno = AuditLog.SaveAuditLog(logId, lastUpdatedLog, noOfRecords, remark, (int)response.StatusCode, json, startTime.ToString(), endTime.ToString(), milliseconds);
     Console.WriteLine($"Audit log saved with ID: {rowno}");
 
     if (!response.IsSuccessStatusCode)
