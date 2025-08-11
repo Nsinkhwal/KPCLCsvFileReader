@@ -1,5 +1,6 @@
 ﻿using KPCLCsvFileReader;
-using Microsoft.Data.SqlClient;
+using System.Text;
+using System.Text.Json;
 
 var reservoirMapping = new Dictionary<string, int>
 {
@@ -115,7 +116,7 @@ Console.WriteLine($"Total DB records created: {dbData.Count}");
 
 if (dbData.Count > 0)
 {
-    await InsertToDatabase(dbData);
+    await PostToAPI(dbData);
 }
 
 foreach (var item in allData.Take(5))
@@ -145,51 +146,43 @@ static decimal? ExtractNumericValue(string value)
     return decimal.TryParse(numericPart, out decimal result) ? result : null;
 }
 
-static async Task InsertToDatabase(List<ReservoirDataDB> data)
+static async Task PostToAPI(List<ReservoirDataDB> data)
 {
-    string connectionString = "Server=103.171.96.233,5022;User ID=kwrisuser;Password=S_Admin@Kwr!$@2025;Database=ACIWRM_Lang;MultipleActiveResultSets=True;TrustServerCertificate=true;";
-    
-    using var connection = new SqlConnection(connectionString);
-    await connection.OpenAsync();
-    
-    foreach (var record in data)
+    var startTime = DateTime.Now;
+    var postUrl = "http://localhost:60005/api/data/Post_ReservoirDataBulk";
+    //var postUrl = "http://kwris.aciwrm.org/api/data/Post_ReservoirDataBulk";
+
+    using var client = new HttpClient();
+    client.Timeout = TimeSpan.FromMinutes(4);
+
+    var json = JsonSerializer.Serialize(data);
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+    Console.WriteLine($"Posting {data.Count} records to API...");
+
+    var response = await client.PostAsync(postUrl, content);
+    var result = await response.Content.ReadAsStringAsync();
+
+    var endTime = DateTime.Now;
+    var totalTimeTaken = endTime - startTime;
+    int milliseconds = (int)totalTimeTaken.TotalMilliseconds;
+
+    var lastUpdatedLog = DateTime.Now;
+    int noOfRecords = data.Count;
+    int logId = 35; // Change if needed
+    string remark = result;
+
+    // Save the audit log (adjust method signature as your project)
+    int rowno = AuditLog.SaveAuditLog(logId, lastUpdatedLog, noOfRecords, remark, (int)response.StatusCode, json, null, null, milliseconds);
+    Console.WriteLine($"Audit log saved with ID: {rowno}");
+
+    if (!response.IsSuccessStatusCode)
     {
-        string sql = @"
-            INSERT INTO ACIWRM_Lang.dbo.tbl_Reservoir_WL_KPCL 
-            (ReservoirID, FRL, MDDL, [Date], Reservior_Level, StorageCapacity_AsPerDesign, 
-             TMC_GrossCapacity, TMC_Live_Above_Cill, TMC_Above_Cill, Flow_Inflow, Flow_OutFlow, 
-             Cum_TMC_Inflow, Cum_TMC_OutFlow, Storage_Per, GrossCapacity, LiveCapacity, 
-             Eq_Energy_MU, Discharge, CreatedBy, CreatedOn)
-            VALUES 
-            (@ReservoirID, @FRL, @MDDL, @Date, @Reservior_Level, @StorageCapacity_AsPerDesign, 
-             @TMC_GrossCapacity, @TMC_Live_Above_Cill, @TMC_Above_Cill, @Flow_Inflow, @Flow_OutFlow, 
-             @Cum_TMC_Inflow, @Cum_TMC_OutFlow, @Storage_Per, @GrossCapacity, @LiveCapacity, 
-             @Eq_Energy_MU, @Discharge, @CreatedBy, @CreatedOn)";
-        
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@ReservoirID", record.ReservoirID ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@FRL", record.FRL ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@MDDL", record.MDDL ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Date", record.Date ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Reservior_Level", record.Reservior_Level ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@StorageCapacity_AsPerDesign", record.StorageCapacity_AsPerDesign ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@TMC_GrossCapacity", record.TMC_GrossCapacity ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@TMC_Live_Above_Cill", record.TMC_Live_Above_Cill ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@TMC_Above_Cill", record.TMC_Above_Cill ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Flow_Inflow", record.Flow_Inflow ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Flow_OutFlow", record.Flow_OutFlow ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Cum_TMC_Inflow", record.Cum_TMC_Inflow ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Cum_TMC_OutFlow", record.Cum_TMC_OutFlow ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Storage_Per", record.Storage_Per ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@GrossCapacity", record.GrossCapacity ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@LiveCapacity", record.LiveCapacity ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Eq_Energy_MU", record.Eq_Energy_MU ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@Discharge", record.Discharge ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@CreatedBy", "CSV_Import");
-        command.Parameters.AddWithValue("@CreatedOn", DateTime.Now);
-        
-        await command.ExecuteNonQueryAsync();
+        Console.WriteLine($"Error: {response.StatusCode} - Unable to post data");
+        Console.WriteLine($"Time taken: {milliseconds}ms, Records: {noOfRecords}");
+        return;
     }
     
-    Console.WriteLine($"Successfully inserted {data.Count} records into database.");
+    Console.WriteLine($"API Response: {result}");
+    Console.WriteLine($"Successfully posted {data.Count} records to API.");
 }
