@@ -36,8 +36,20 @@ foreach (string csvFile in csvFiles)
     
     if (lines.Length > 3)
     {
+        string[] acceptedFormats = new[]
+                          {
+                                "yyyy-MM-dd",
+                                "dd-MM-yyyy",
+                                "yyyy/MM/dd",
+                                "dd/MM/yyyy",
+                                "MM/dd/yyyy",
+                                "M/d/yyyy",
+                                "d-M-yyyy",
+                                "yyyyMMdd"
+                            };
+
         var dateLine = lines[0].Split(',');
-        if (dateLine.Length > 1 && DateTime.TryParse(dateLine[1], out fileDate))
+        if (dateLine.Length > 1 && DateTime.TryParseExact(dateLine[1], acceptedFormats,CultureInfo.InvariantCulture,DateTimeStyles.None, out fileDate))
         {
             for (int i = 3; i < lines.Length; i++)
             {
