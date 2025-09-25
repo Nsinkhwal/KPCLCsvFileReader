@@ -1,4 +1,5 @@
-﻿using KPCLCsvFileReader;
+using  KPCLCsvFileReader;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -54,47 +55,53 @@ foreach (string csvFile in csvFiles)
             for (int i = 3; i < lines.Length; i++)
             {
                 var columns = lines[i].Split(',');
-                if (columns.Length >= 27 && !string.IsNullOrWhiteSpace(columns[0]))
+                if (columns.Length < 27 || string.IsNullOrWhiteSpace(columns[0]))
                 {
-                    int csvId = ParseInt(columns[0]) ?? 0;
-                    if (csvId < 1 || csvId > 9) continue;
-                    
-                    string reservoirName = columns[1].ToUpper().Trim();
-                    int? realReservoirId = reservoirMapping.ContainsKey(reservoirName) ? reservoirMapping[reservoirName] : null;
-                    
-                    if (!realReservoirId.HasValue) continue;
-                    
+                    Console.WriteLine($"Skipping row {i}: Invalid column count ({columns.Length}) or empty ID");
+                    continue;
+                }
+                
+                int csvId = ParseInt(columns[0]) ?? 0;
+                if (csvId < 1 || csvId > 9) continue;
+                
+                string reservoirName = columns[1].ToUpper().Trim();
+                int? realReservoirId = reservoirMapping.ContainsKey(reservoirName) ? reservoirMapping[reservoirName] : null;
+                
+                if (!realReservoirId.HasValue) continue;
+                
+                try
+                {
                     var csvData = new ReservoirData
                     {
                         Date = fileDate,
-                        Id = ParseInt(columns[0]) ?? 0,
-                        Reservoir = columns[1],
-                        GrossCap = ParseDecimal(columns[2]),
-                        LiveCap = ParseDecimal(columns[3]),
-                        FRL = ConvertToFeet(columns[4]),
-                        MDDL = ConvertToFeet(columns[5]),
-                        PresentLevel = columns[6],
-                        PresentCapMCft = ParseDecimal(columns[7]),
-                        PresentCapPercent = ParseDecimal(columns[8]),
-                        PresentEqEnergy = ParseDecimal(columns[9]),
-                        LastYearLevel = columns[10],
-                        LastYearCapMCft = ParseDecimal(columns[11]),
-                        LastYearCapPercent = ParseDecimal(columns[12]),
-                        LastYearEqEnergy = ParseDecimal(columns[13]),
-                        PresentInflowDay = ParseDecimal(columns[14]),
-                        PresentInflowMonth = ParseDecimal(columns[15]),
-                        PresentInflowWY = ParseDecimal(columns[16]),
-                        LastYearInflowDay = ParseDecimal(columns[17]),
-                        LastYearInflowMonth = ParseDecimal(columns[18]),
-                        LastYearInflowWY = ParseDecimal(columns[19]),
-                        PresentDischargeDay = ParseDecimal(columns[20]),
-                        PresentDischargeMonth = ParseDecimal(columns[21]),
-                        PresentDischargeWY = ParseDecimal(columns[22]),
-                        LastYearDischargeDay = ParseDecimal(columns[23]),
-                        LastYearDischargeMonth = ParseDecimal(columns[24]),
-                        LastYearDischargeWY = ParseDecimal(columns[25]),
-                        InflowCusecs = ParseDecimal(columns[26]),
-                        LastYearInflowCusecs = columns.Length > 27 ? ParseDecimal(columns[27]) : null
+                        Id = csvId,
+                        Reservoir = GetColumn(columns, 1),
+                        GrossCap = ParseDecimal(GetColumn(columns, 2)),
+                        LiveCap = ParseDecimal(GetColumn(columns, 3)),
+                        FRL = ConvertToFeet(GetColumn(columns, 4)),
+                        MDDL = ConvertToFeet(GetColumn(columns, 5)),
+                        PresentLevel = GetColumn(columns, 6),
+                        PresentCapMCft = ParseDecimal(GetColumn(columns, 7)),
+                        PresentCapPercent = ParseDecimal(GetColumn(columns, 8)),
+                        PresentEqEnergy = ParseDecimal(GetColumn(columns, 9)),
+                        LastYearLevel = GetColumn(columns, 10),
+                        LastYearCapMCft = ParseDecimal(GetColumn(columns, 11)),
+                        LastYearCapPercent = ParseDecimal(GetColumn(columns, 12)),
+                        LastYearEqEnergy = ParseDecimal(GetColumn(columns, 13)),
+                        PresentInflowDay = ParseDecimal(GetColumn(columns, 14)),
+                        PresentInflowMonth = ParseDecimal(GetColumn(columns, 15)),
+                        PresentInflowWY = ParseDecimal(GetColumn(columns, 16)),
+                        LastYearInflowDay = ParseDecimal(GetColumn(columns, 17)),
+                        LastYearInflowMonth = ParseDecimal(GetColumn(columns, 18)),
+                        LastYearInflowWY = ParseDecimal(GetColumn(columns, 19)),
+                        PresentDischargeDay = ParseDecimal(GetColumn(columns, 20)),
+                        PresentDischargeMonth = ParseDecimal(GetColumn(columns, 21)),
+                        PresentDischargeWY = ParseDecimal(GetColumn(columns, 22)),
+                        LastYearDischargeDay = ParseDecimal(GetColumn(columns, 23)),
+                        LastYearDischargeMonth = ParseDecimal(GetColumn(columns, 24)),
+                        LastYearDischargeWY = ParseDecimal(GetColumn(columns, 25)),
+                        InflowCusecs = ParseDecimal(GetColumn(columns, 26)),
+                        LastYearInflowCusecs = ParseDecimal(GetColumn(columns, 27))
                     };
                     allData.Add(csvData);
                     
@@ -118,6 +125,10 @@ foreach (string csvFile in csvFiles)
                     };
                     dbData.Add(dbRecord);
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing row {i}: {ex.Message}");
+                }
             }
         }
     }
@@ -136,6 +147,7 @@ foreach (var item in allData.Take(5))
     Console.WriteLine($"{item.Date:yyyy-MM-dd} - {item.Reservoir} - Level: {item.PresentLevel}");
 }
 
+static string GetColumn(string[] columns, int index) => index < columns.Length ? columns[index] : string.Empty;
 static int? ParseInt(string value) => string.IsNullOrWhiteSpace(value) ? null : int.TryParse(value, out int result) ? result : null;
 static decimal? ParseDecimal(string value) => string.IsNullOrWhiteSpace(value) ? null : decimal.TryParse(value, out decimal result) ? result : null;
 static DateTime? ParseDate(string value) => string.IsNullOrWhiteSpace(value) ? null : DateTime.TryParse(value, out DateTime result) ? result : null;
@@ -161,8 +173,8 @@ static decimal? ExtractNumericValue(string value)
 static async Task PostToAPI(List<ReservoirDataDB> data)
 {
     var startTime = DateTime.Now;
-    var postUrl = "http://localhost:60005/api/data/Post_ReservoirDataBulk";
-    //var postUrl = "http://kwris.aciwrm.org/api/data/Post_ReservoirDataBulk";
+    //var postUrl = "http://localhost:60005/api/data/Post_ReservoirDataBulk";
+    var postUrl = "http://kwris.aciwrm.org/api/data/Post_ReservoirDataBulk";
 
     using var client = new HttpClient();
     client.Timeout = TimeSpan.FromMinutes(4);
